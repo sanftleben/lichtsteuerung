@@ -1,4 +1,3 @@
-```yaml
 blueprint:
   name: Bewegungs-/Präsenzgesteuerte Beleuchtung mit Tageszeit-Helligkeit
   description: >
@@ -235,4 +234,3 @@ actions:
 
   - action: light.turn_off
     target: !input target_lights
-```
