@@ -6,7 +6,7 @@ Die Helligkeit wird abhängig von der aktuellen Uhrzeit automatisch aus vier fre
 
 ## Import
 
-[![In Home Assistant importieren](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=DEINE_GITHUB_RAW_URL_HIER)
+[![In Home Assistant importieren](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=[DEINE_GITHUB_RAW_URL_HIER](https://raw.githubusercontent.com/sanftleben/lichtsteuerung/refs/heads/main/lichtsteuerung.yml))
 
 Alternativ kann der Blueprint über:
 
