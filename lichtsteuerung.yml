@@ -25,12 +25,16 @@ blueprint:
                 - presence
 
     target_lights:
-      name: Leuchten
-      description: Eine oder mehrere Leuchten, die gesteuert werden sollen.
+      name: Leuchten / Schalter
+      description: >
+        Eine oder mehrere Leuchten oder Schalter (z. B. Leuchten in einer
+        schaltbaren Steckdose), die gesteuert werden sollen.
       selector:
-        target:
-          entity:
-            domain: light
+        entity:
+          multiple: true
+          filter:
+            - domain: light
+            - domain: switch
 
     off_delay:
       name: Ausschaltverzögerung
@@ -177,15 +181,32 @@ triggers:
     entity_id: !input ambient_light_sensor
     below: !input ambient_light_on_threshold
 
+variables:
+  trigger_entities: !input trigger_entities
+  target_lights: !input target_lights
+  use_ambient_light: !input use_ambient_light
+  ambient_light_sensor: !input ambient_light_sensor
+  ambient_light_on_threshold: !input ambient_light_on_threshold
+
 conditions:
   - condition: and
     conditions: !input condition_extra
 
   - condition: or
     conditions:
-      # Bewegung/Präsenz darf immer einschalten.
-      - condition: trigger
-        id: activity
+      # Bewegung/Präsenz darf einschalten – aber nur, wenn keine
+      # Außenhelligkeitsprüfung aktiv ist oder es aktuell auch tatsächlich
+      # dunkel genug ist. Andernfalls bleibt ein hell gemeldeter Sensor
+      # (z. B. 12000 lx bei einer Schwelle von 100 lx) wirkungslos.
+      - condition: and
+        conditions:
+          - condition: trigger
+            id: activity
+          - condition: template
+            value_template: >
+              {{ not use_ambient_light or ambient_light_sensor in ['', none]
+                 or states(ambient_light_sensor) in ['unknown', 'unavailable']
+                 or states(ambient_light_sensor) | float(0) < ambient_light_on_threshold }}
 
       # Außenhelligkeit darf nur einschalten, wenn jemand anwesend ist.
       - condition: and
@@ -211,10 +232,6 @@ conditions:
 
 actions:
   - variables:
-      trigger_entities: !input trigger_entities
-      use_ambient_light: !input use_ambient_light
-      ambient_light_sensor: !input ambient_light_sensor
-
       current_time: "{{ now().strftime('%H:%M:%S') }}"
 
       profile_1_start: !input profile_1_start
@@ -243,9 +260,14 @@ actions:
         {% endif %}
 
   - action: light.turn_on
-    target: !input target_lights
+    target:
+      entity_id: "{{ target_lights | select('match', '^light\\.') | list }}"
     data:
       brightness_pct: "{{ brightness | int }}"
+
+  - action: switch.turn_on
+    target:
+      entity_id: "{{ target_lights | select('match', '^switch\\.') | list }}"
 
   # Solange mindestens ein Sensor aktiv ist, bleibt das Licht an.
   # Erst wenn alle Sensoren aus sind, beginnt die Ausschaltverzögerung.
@@ -266,4 +288,9 @@ actions:
          | count == 0 }}
 
   - action: light.turn_off
-    target: !input target_lights
+    target:
+      entity_id: "{{ target_lights | select('match', '^light\\.') | list }}"
+
+  - action: switch.turn_off
+    target:
+      entity_id: "{{ target_lights | select('match', '^switch\\.') | list }}"

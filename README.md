@@ -1,6 +1,6 @@
 # Home Assistant Blueprint – Bewegungs-/Präsenzgesteuerte Beleuchtung
 
-Steuert eine oder mehrere `light`-Entities anhand von Bewegung, Präsenz und optional der Außenhelligkeit.
+Steuert eine oder mehrere `light`- oder `switch`-Entities (z. B. Leuchten in einer schaltbaren Steckdose) anhand von Bewegung, Präsenz und optional der Außenhelligkeit.
 
 Die Helligkeit wird abhängig von der Tageszeit aus vier frei konfigurierbaren Zeitprofilen gewählt.
 
@@ -15,7 +15,7 @@ Alternativ kann der Blueprint über **Einstellungen → Automationen & Szenen �
 ## Funktionen
 
 - Mehrere Bewegungs- und Präsenzsensoren
-- Eine oder mehrere Leuchten
+- Eine oder mehrere Leuchten und/oder Schalter (z. B. Leuchten in einer Steckdose)
 - Vier frei konfigurierbare Tageszeit-/Helligkeitsprofile
 - Individuelle Helligkeit von 1–100 %
 - Einstellbare Ausschaltverzögerung
@@ -30,19 +30,19 @@ Alternativ kann der Blueprint über **Einstellungen → Automationen & Szenen �
 
 ### Bewegung / Präsenz
 
-Ein `on`-Event eines der konfigurierten Bewegungs-/Präsenzsensoren schaltet das Licht sofort ein.
+Ein `on`-Event eines der konfigurierten Bewegungs-/Präsenzsensoren schaltet das Licht ein.
 
 Die aktuelle Uhrzeit bestimmt dabei die Helligkeit.
 
-Die Außenhelligkeit spielt bei diesem Trigger keine Rolle.
+Ist ein Außenhelligkeitssensor konfiguriert und aktiviert, wird zusätzlich geprüft, ob es aktuell auch tatsächlich dunkel genug ist (aktueller Lux-Wert unterhalb der Einschalt-Schwelle). Ist es heller als die Schwelle, schaltet Bewegung/Präsenz das Licht **nicht** ein. Ohne konfigurierten Sensor bzw. deaktivierter Außenhelligkeitsprüfung schaltet Bewegung/Präsenz wie gewohnt immer ein.
 
 Das bedeutet beispielsweise:
 
 ```text
-Tagsüber + Bewegung
-→ Licht 100 %
+Tagsüber (500 lx, Schwelle 100 lx) + Bewegung
+→ Licht bleibt aus
 
-Nachts + Bewegung
+Nachts (10 lx, Schwelle 100 lx) + Bewegung
 → Licht 10 %
 ```
 
@@ -218,11 +218,12 @@ Helligkeit:
 
 ## Verhalten im Alltag
 
-### Szenario 1 – Bewegung am Tag
+### Szenario 1 – Bewegung am Tag, hell genug (Außenhelligkeitsprüfung aktiv)
 
 ```text
+Außenhelligkeit = 500 lx (Schwelle 100 lx)
 Bewegung erkannt
-→ Licht 100 %
+→ Licht bleibt aus
 ```
 
 ### Szenario 2 – Bewegung in der Nacht
@@ -273,7 +274,7 @@ Das ist absichtlich so. Ein hellerer Außenwert soll niemals eine laufende Beleu
 - Home Assistant
 - Blueprint-Unterstützung
 - Bewegungs-/Präsenzsensoren als `binary_sensor`
-- Zu steuernde Leuchten als `light`
+- Zu steuernde Leuchten als `light` und/oder Schalter als `switch`
 - Optional: Außenhelligkeitssensor mit Lux-Wert und `device_class: illuminance`
 
 ## Datei
