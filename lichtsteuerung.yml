@@ -1,0 +1,238 @@
+```yaml
+blueprint:
+  name: Bewegungs-/Präsenzgesteuerte Beleuchtung mit Tageszeit-Helligkeit
+  description: >
+    Steuert eine oder mehrere Leuchten anhand von Bewegungs- oder
+    Präsenzsensoren. Die Helligkeit wird abhängig von der aktuellen
+    Tageszeit aus vier frei konfigurierbaren Zeit-/Helligkeitsprofilen
+    bestimmt.
+
+    Die Leuchten werden erst ausgeschaltet, wenn alle konfigurierten
+    Bewegungs-/Präsenzsensoren ausgeschaltet sind und anschließend die
+    eingestellte Ausschaltverzögerung abgelaufen ist.
+
+  domain: automation
+
+  input:
+
+    trigger_entities:
+      name: Bewegungs-/Präsenzsensoren
+      description: >
+        Sensoren, die beim Wechsel auf "on" die Beleuchtung einschalten.
+        Es können mehrere Bewegungs- und Präsenzsensoren ausgewählt werden.
+      selector:
+        entity:
+          multiple: true
+          filter:
+            - domain: binary_sensor
+              device_class:
+                - motion
+                - occupancy
+                - presence
+
+    target_lights:
+      name: Leuchten
+      description: >
+        Eine oder mehrere Leuchten, die gesteuert werden sollen.
+      selector:
+        target:
+          entity:
+            domain: light
+
+    off_delay:
+      name: Ausschaltverzögerung
+      description: >
+        Zeit, die nach dem Ausschalten aller Bewegungs-/Präsenzsensoren
+        gewartet wird, bevor die Leuchten ausgeschaltet werden.
+      default:
+        minutes: 2
+      selector:
+        duration: {}
+
+    condition_extra:
+      name: Zusätzliche Bedingungen
+      description: >
+        Optionale zusätzliche Bedingungen. Werden keine Bedingungen benötigt,
+        einfach leer lassen.
+      default: []
+      selector:
+        condition: {}
+
+    profile_1_start:
+      name: Profil 1 – Startzeit
+      description: >
+        Beginn des ersten Helligkeitsprofils.
+      default: "00:00:00"
+      selector:
+        time: {}
+
+    profile_1_brightness:
+      name: Profil 1 – Helligkeit
+      default: 10
+      selector:
+        number:
+          min: 1
+          max: 100
+          step: 1
+          unit_of_measurement: "%"
+
+    profile_2_start:
+      name: Profil 2 – Startzeit
+      description: >
+        Beginn des zweiten Helligkeitsprofils.
+      default: "06:00:00"
+      selector:
+        time: {}
+
+    profile_2_brightness:
+      name: Profil 2 – Helligkeit
+      default: 50
+      selector:
+        number:
+          min: 1
+          max: 100
+          step: 1
+          unit_of_measurement: "%"
+
+    profile_3_start:
+      name: Profil 3 – Startzeit
+      description: >
+        Beginn des dritten Helligkeitsprofils.
+      default: "08:00:00"
+      selector:
+        time: {}
+
+    profile_3_brightness:
+      name: Profil 3 – Helligkeit
+      default: 100
+      selector:
+        number:
+          min: 1
+          max: 100
+          step: 1
+          unit_of_measurement: "%"
+
+    profile_4_start:
+      name: Profil 4 – Startzeit
+      description: >
+        Beginn des vierten Helligkeitsprofils.
+      default: "18:00:00"
+      selector:
+        time: {}
+
+    profile_4_brightness:
+      name: Profil 4 – Helligkeit
+      default: 50
+      selector:
+        number:
+          min: 1
+          max: 100
+          step: 1
+          unit_of_measurement: "%"
+
+
+mode: restart
+max_exceeded: silent
+
+
+triggers:
+  - trigger: state
+    entity_id: !input trigger_entities
+    to: "on"
+
+
+conditions:
+  - condition: and
+    conditions: !input condition_extra
+
+
+actions:
+
+  # ------------------------------------------------------------
+  # Helligkeit anhand der aktuellen Uhrzeit bestimmen
+  # ------------------------------------------------------------
+
+  - variables:
+      current_time: "{{ now().strftime('%H:%M:%S') }}"
+
+      profile_1_start: !input profile_1_start
+      profile_2_start: !input profile_2_start
+      profile_3_start: !input profile_3_start
+      profile_4_start: !input profile_4_start
+
+      profile_1_brightness: !input profile_1_brightness
+      profile_2_brightness: !input profile_2_brightness
+      profile_3_brightness: !input profile_3_brightness
+      profile_4_brightness: !input profile_4_brightness
+
+
+  - variables:
+      brightness: >
+        {% set now = current_time %}
+        {% set p1 = profile_1_start %}
+        {% set p2 = profile_2_start %}
+        {% set p3 = profile_3_start %}
+        {% set p4 = profile_4_start %}
+
+        {% if now >= p4 %}
+          {{ profile_4_brightness }}
+        {% elif now >= p3 %}
+          {{ profile_3_brightness }}
+        {% elif now >= p2 %}
+          {{ profile_2_brightness }}
+        {% elif now >= p1 %}
+          {{ profile_1_brightness }}
+        {% else %}
+          {{ profile_4_brightness }}
+        {% endif %}
+
+
+  # ------------------------------------------------------------
+  # Licht einschalten
+  # ------------------------------------------------------------
+
+  - action: light.turn_on
+    target: !input target_lights
+    data:
+      brightness_pct: "{{ brightness | int }}"
+
+
+  # ------------------------------------------------------------
+  # Warten, bis ALLE Sensoren aus sind
+  # ------------------------------------------------------------
+
+  - wait_template: >
+      {{ expand(trigger_entities)
+         | selectattr('state', 'eq', 'on')
+         | list
+         | count == 0 }}
+
+
+  # ------------------------------------------------------------
+  # Ausschaltverzögerung.
+  #
+  # Wird währenddessen wieder Bewegung/Präsenz erkannt,
+  # beendet mode: restart die laufende Automation und startet
+  # sie mit dem neuen Trigger erneut.
+  # ------------------------------------------------------------
+
+  - delay: !input off_delay
+
+
+  # ------------------------------------------------------------
+  # Sicherheitsprüfung:
+  # Nur ausschalten, wenn inzwischen wirklich noch immer
+  # kein Sensor aktiv ist.
+  # ------------------------------------------------------------
+
+  - condition: template
+    value_template: >
+      {{ expand(trigger_entities)
+         | selectattr('state', 'eq', 'on')
+         | list
+         | count == 0 }}
+
+
+  - action: light.turn_off
+    target: !input target_lights
+```
