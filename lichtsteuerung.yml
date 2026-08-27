@@ -2,9 +2,12 @@ blueprint:
   name: Bewegungs-/Präsenzgesteuerte Beleuchtung mit Tageszeit und Außenhelligkeit
   description: >
     Steuert eine oder mehrere Leuchten anhand von Bewegungs- und Präsenzsensoren.
+    Mehrere Sensoren können zum Einschalten wahlweise mit ODER oder UND verknüpft
+    werden. Zum Ausschalten gilt immer UND: Erst wenn alle Sensoren inaktiv sind,
+    startet die Ausschaltverzögerung.
     Die Helligkeit wird abhängig von vier Zeitprofilen gesetzt. Optional kann ein
     Außen-Helligkeitssensor das Einschalten auslösen, wenn es dunkel wird und
-    gleichzeitig mindestens einer der Bewegungs-/Präsenzsensoren aktiv ist.
+    gleichzeitig die Sensor-Verknüpfung erfüllt ist.
     Die Außenhelligkeit schaltet das Licht niemals aus.
   domain: automation
 
@@ -12,8 +15,10 @@ blueprint:
     trigger_entities:
       name: Bewegungs-/Präsenzsensoren
       description: >
-        Sensoren, die das Licht bei Aktivierung einschalten. Beim Ausschalten
-        wird gewartet, bis alle ausgewählten Sensoren inaktiv sind.
+        Sensoren (Bewegung, Belegung, Präsenz), die das Licht einschalten können.
+        Wie mehrere Sensoren beim Einschalten verknüpft werden, legt die Option
+        "Verknüpfung der Sensoren" fest. Beim Ausschalten wird immer gewartet,
+        bis alle ausgewählten Sensoren inaktiv sind.
       selector:
         entity:
           multiple: true
@@ -23,6 +28,23 @@ blueprint:
                 - motion
                 - occupancy
                 - presence
+
+    trigger_logic:
+      name: Verknüpfung der Sensoren (Einschalten)
+      description: >
+        ODER: Ein aktiver Sensor genügt zum Einschalten.
+        UND: Alle ausgewählten Sensoren müssen gleichzeitig aktiv sein
+        (z. B. Bewegung UND Präsenz).
+        Für das Ausschalten gilt unabhängig davon immer UND – das Licht geht
+        erst aus, wenn alle Sensoren inaktiv sind.
+      default: "or"
+      selector:
+        select:
+          options:
+            - label: ODER – mindestens ein Sensor aktiv
+              value: "or"
+            - label: UND – alle Sensoren aktiv
+              value: "and"
 
     target_lights:
       name: Leuchten / Schalter
@@ -56,7 +78,8 @@ blueprint:
       name: Außenhelligkeit als Trigger verwenden
       description: >
         Wenn aktiviert, kann ein Absinken der Außenhelligkeit das Licht einschalten,
-        sofern mindestens ein Bewegungs-/Präsenzsensor aktiv ist.
+        sofern die Sensor-Verknüpfung erfüllt ist (ODER: mindestens ein Sensor
+        aktiv, UND: alle Sensoren aktiv).
       default: true
       selector:
         boolean: {}
@@ -182,7 +205,24 @@ triggers:
     below: !input ambient_light_on_threshold
 
 variables:
-  trigger_entities: !input trigger_entities
+  trigger_entities_input: !input trigger_entities
+  trigger_logic: !input trigger_logic
+
+  # Ein einzeln ausgewählter Sensor kann als String ankommen – hier wird immer
+  # eine Liste daraus gemacht.
+  trigger_entities: >
+    {{ trigger_entities_input if trigger_entities_input is not string
+       else ([trigger_entities_input] if trigger_entities_input else []) }}
+
+  # Wie viele Sensoren gleichzeitig aktiv sein müssen, damit eingeschaltet
+  # werden darf: bei UND alle, bei ODER genügt einer.
+  sensors_required: >
+    {% if trigger_logic == 'and' %}
+      {{ [trigger_entities | count, 1] | max }}
+    {% else %}
+      1
+    {% endif %}
+
   target_lights: !input target_lights
   use_ambient_light: !input use_ambient_light
   ambient_light_sensor: !input ambient_light_sensor
@@ -202,13 +242,22 @@ conditions:
         conditions:
           - condition: trigger
             id: activity
+          # Bei UND-Verknüpfung müssen alle Sensoren aktiv sein, bei ODER genügt
+          # der gerade ausgelöste Sensor.
+          - condition: template
+            value_template: >
+              {{ expand(trigger_entities)
+                 | selectattr('state', 'eq', 'on')
+                 | list
+                 | count >= sensors_required | int }}
           - condition: template
             value_template: >
               {{ not use_ambient_light or ambient_light_sensor in ['', none]
                  or states(ambient_light_sensor) in ['unknown', 'unavailable']
                  or states(ambient_light_sensor) | float(0) < ambient_light_on_threshold }}
 
-      # Außenhelligkeit darf nur einschalten, wenn jemand anwesend ist.
+      # Außenhelligkeit darf nur einschalten, wenn die Sensor-Verknüpfung
+      # erfüllt ist (ODER: mindestens ein Sensor, UND: alle Sensoren).
       - condition: and
         conditions:
           - condition: trigger
@@ -218,7 +267,7 @@ conditions:
               {{ expand(trigger_entities)
                  | selectattr('state', 'eq', 'on')
                  | list
-                 | count > 0 }}
+                 | count >= sensors_required | int }}
 
   # Außenhelligkeit ist optional. Wenn sie nicht verwendet wird, darf der
   # numerische Trigger wegen eines leeren Sensors nicht relevant werden.
@@ -269,8 +318,10 @@ actions:
     target:
       entity_id: "{{ target_lights | select('match', '^switch\\.') | list }}"
 
-  # Solange mindestens ein Sensor aktiv ist, bleibt das Licht an.
-  # Erst wenn alle Sensoren aus sind, beginnt die Ausschaltverzögerung.
+  # Für das Ausschalten gilt immer eine UND-Verknüpfung, unabhängig von der
+  # gewählten Einschalt-Verknüpfung: Solange mindestens ein Sensor aktiv ist,
+  # bleibt das Licht an. Erst wenn alle Sensoren aus sind, beginnt die
+  # Ausschaltverzögerung.
   - wait_template: >
       {{ expand(trigger_entities)
          | selectattr('state', 'eq', 'on')

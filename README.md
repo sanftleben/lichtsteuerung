@@ -15,6 +15,7 @@ Alternativ kann der Blueprint über **Einstellungen → Automationen & Szenen �
 ## Funktionen
 
 - Mehrere Bewegungs- und Präsenzsensoren
+- Wählbare **UND**- oder **ODER**-Verknüpfung der Sensoren beim Einschalten
 - Eine oder mehrere Leuchten und/oder Schalter (z. B. Leuchten in einer Steckdose)
 - Vier frei konfigurierbare Tageszeit-/Helligkeitsprofile
 - Individuelle Helligkeit von 1–100 %
@@ -23,14 +24,14 @@ Alternativ kann der Blueprint über **Einstellungen → Automationen & Szenen �
 - Optionaler Außen-Helligkeitssensor in Lux
 - Außenhelligkeit kann das Licht einschalten, wenn jemand im Raum ist
 - Außenhelligkeit schaltet das Licht niemals aus
-- Das Licht wird erst ausgeschaltet, wenn **alle** Bewegungs-/Präsenzsensoren inaktiv sind
+- Das Licht wird erst ausgeschaltet, wenn **alle** Bewegungs-/Präsenzsensoren inaktiv sind (immer UND, unabhängig von der Einschalt-Verknüpfung)
 - Neue Bewegung/Präsenz während der Ausschaltverzögerung startet die Automation neu
 
 ## Logik
 
 ### Bewegung / Präsenz
 
-Ein `on`-Event eines der konfigurierten Bewegungs-/Präsenzsensoren schaltet das Licht ein.
+Ein `on`-Event eines der konfigurierten Bewegungs-/Präsenzsensoren löst die Automation aus. Ob dann tatsächlich eingeschaltet wird, hängt von der gewählten [Sensor-Verknüpfung](#verknüpfung-der-sensoren) ab.
 
 Die aktuelle Uhrzeit bestimmt dabei die Helligkeit.
 
@@ -46,16 +47,52 @@ Nachts (10 lx, Schwelle 100 lx) + Bewegung
 → Licht 10 %
 ```
 
+### Verknüpfung der Sensoren
+
+Für das **Einschalten** kann gewählt werden, wie mehrere Sensoren verknüpft werden:
+
+| Verknüpfung | Bedeutung |
+|---|---|
+| `ODER` (Standard) | Mindestens ein Sensor ist `on` |
+| `UND` | Alle ausgewählten Sensoren sind gleichzeitig `on` |
+
+```text
+Verknüpfung = ODER
+Bewegung  ON, Präsenz OFF
+→ Licht EIN
+
+Verknüpfung = UND
+Bewegung  ON, Präsenz OFF
+→ Licht bleibt aus
+
+Verknüpfung = UND
+Bewegung  ON, Präsenz ON
+→ Licht EIN
+```
+
+Die `UND`-Verknüpfung ist z. B. nützlich, um Fehlauslösungen zu vermeiden: Erst wenn ein Bewegungsmelder *und* ein Präsenzsensor anschlagen, wird geschaltet.
+
+Für das **Ausschalten** gilt dagegen immer eine `UND`-Verknüpfung aller Sensoren: Die Ausschaltverzögerung startet erst, wenn **alle** Sensoren `off` sind – unabhängig davon, was für das Einschalten eingestellt ist.
+
+```text
+Verknüpfung = UND
+Bewegung  ON, Präsenz ON   → Licht EIN
+Bewegung  OFF, Präsenz ON  → Licht bleibt an
+Bewegung  OFF, Präsenz OFF → Ausschaltverzögerung → Licht AUS
+```
+
 ### Außenhelligkeit
 
-Der Außenhelligkeitssensor ist ein zusätzlicher Trigger.
+Der Außenhelligkeitssensor ist ein zusätzlicher Trigger. Auch hier wird die gewählte Sensor-Verknüpfung berücksichtigt.
 
 Beispiel:
 
 ```text
 Außenhelligkeit < 100 lx
 +
-mindestens ein Bewegungs-/Präsenzsensor = on
+Sensor-Verknüpfung erfüllt
+  (ODER: mindestens ein Sensor = on,
+   UND:  alle Sensoren = on)
 → Licht EIN
 ```
 
@@ -124,7 +161,7 @@ binary_sensor.wohnzimmer_bewegung
 binary_sensor.wohnzimmer_prasenz
 ```
 
-Alle Sensoren werden gemeinsam betrachtet.
+Beim Einschalten entscheidet die gewählte Verknüpfung (`ODER` / `UND`), ob ein einzelner aktiver Sensor genügt oder alle Sensoren aktiv sein müssen.
 
 Das Licht wird erst für die Ausschaltverzögerung freigegeben, wenn **alle** Sensoren `off` sind.
 
@@ -195,6 +232,9 @@ Bewegung:
 Präsenz:
   binary_sensor.wohnzimmer_prasenz
 
+Verknüpfung (Einschalten):
+  ODER
+
 Außenhelligkeit:
   sensor.aussen_helligkeit
 
@@ -260,7 +300,28 @@ Präsenz = ON
 → Licht EIN
 ```
 
-### Szenario 6 – Außen wird wieder heller
+### Szenario 6 – UND-Verknüpfung, nur Bewegung erkannt
+
+```text
+Verknüpfung = UND
+Bewegung = ON
+Präsenz  = OFF
+→ Licht bleibt aus
+
+Präsenz  = ON
+→ Licht EIN
+```
+
+### Szenario 7 – UND-Verknüpfung, ein Sensor fällt ab
+
+```text
+Verknüpfung = UND
+Licht ist an
+Bewegung = OFF, Präsenz = ON
+→ Licht bleibt an (Ausschalten erfordert alle Sensoren OFF)
+```
+
+### Szenario 8 – Außen wird wieder heller
 
 ```text
 Außenhelligkeit > 150 lx
